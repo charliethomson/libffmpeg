@@ -21,7 +21,7 @@ libffmpeg = { git = "https://github.com/charliethomson/libffmpeg" }
 
 
 ### Setup
-Copy `.cargo/config.toml` into your workspace as well, `tracing` still hasnt made `valuable` support stable :/
+Copy `.cargo/config.toml` into your workspace, `tracing` [still](https://github.com/tokio-rs/tracing/discussions/1906) hasnt made `valuable` support stable :/
 
 #### with curl
 ```bash
