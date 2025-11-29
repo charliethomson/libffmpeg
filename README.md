@@ -19,6 +19,20 @@ libffmpeg = { git = "https://github.com/charliethomson/libffmpeg" }
 
 ## Usage
 
+
+### Setup
+Copy `.cargo/config.toml` into your workspace as well, `tracing` still hasnt made `valuable` support stable :/
+
+#### with curl
+```bash
+mkdir -p .cargo && curl https://raw.githubusercontent.com/charliethomson/ffrenc/refs/heads/main/.cargo/config.toml > .cargo/config.toml
+```
+
+#### with wget
+```bash
+mkdir -p .cargo && wget https://raw.githubusercontent.com/charliethomson/ffrenc/refs/heads/main/.cargo/config.toml -O .cargo/config.toml
+```
+
 ### Basic ffmpeg execution
 
 ```rust
