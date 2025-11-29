@@ -1,0 +1,7 @@
+target/
+.tmp
+Cargo.lock
+*.mp4
+*.log
+.cov/
+.DS_Store

@@ -1,0 +1,19 @@
+[package]
+name = "libffmpeg"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+derive_builder.workspace = true
+liberror.workspace = true
+serde.workspace = true
+strum.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tokio-util.workspace = true
+tracing.workspace = true
+uuid.workspace = true
+valuable.workspace = true
+
+[lints]
+workspace = true

@@ -1,0 +1,40 @@
+[workspace]
+resolver='2'
+package.edition="2024"
+package.version="0.1.0"
+
+members = [ "libffmpeg", "ffrenc" ]
+
+[workspace.lints.clippy]
+pedantic = { level = "warn", priority = 0 }
+missing_errors_doc = { level = "allow", priority = 1 }
+panic = { level = "warn", priority = 1 }
+implicit_hasher = { level = "allow", priority = 1 }
+missing_panics_doc = { level = "allow", priority = 1 }
+cast_possible_truncation = { level = "allow", priority = 1 }
+cast_possible_wrap = { level = "allow", priority = 1 }
+cast_sign_loss = { level = "allow", priority = 1 }
+cast_lossless = { level = "allow", priority = 1 }
+cast_precision_loss = { level = "allow", priority = 1 }
+large_enum_variant = { level = "allow", priority = 1 }
+result_large_err = { level = "allow", priority = 1 }
+needless_pass_by_value = { level = "allow", priority = 1 }
+large_futures = { level = "allow", priority = 1 }
+match_same_arms = { level = "allow", priority = 1 }
+
+
+[workspace.dependencies]
+liberror = { git = "https://github.com/charliethomson/liberror" }
+libsignal = { git = "https://github.com/charliethomson/libsignal" }
+
+libffmpeg = { path = "./libffmpeg" }
+
+derive_builder = { version = "0.20.2" }
+serde = { version = "1.0.219", features = ["derive"] }
+strum = { version = "0.27.2", features = ["strum_macros", "derive"] }
+thiserror = { version = "2.0.16" }
+tokio = { version = "1.47.1", features = ["full"] }
+tokio-util = { version = "0.7.16" }
+tracing = { version = "0.1.41", features = ["valuable"] }
+uuid = { version = "1.18.1", features = ["serde", "v4"] }
+valuable = { version = "0.1.1", features = ["derive"] }
