@@ -3,7 +3,7 @@ resolver='2'
 package.edition="2024"
 package.version="0.1.0"
 
-members = [ "libffmpeg", "ffrenc" ]
+members = [ "libffmpeg" ]
 
 [workspace.lints.clippy]
 pedantic = { level = "warn", priority = 0 }
