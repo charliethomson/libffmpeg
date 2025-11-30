@@ -1,18 +1,46 @@
 use std::time::Duration;
 
+use serde::{Deserialize, Serialize};
+use thiserror::Error;
 use tokio::process::Command;
 use tokio_util::{future::FutureExt, sync::CancellationToken};
+use valuable::Valuable;
 
-use crate::util::cmd::{self, CommandError, CommandExit, CommandMonitor};
+use crate::{
+    env::find::{FindBinaryError, find_binary_env},
+    util::cmd::{self, CommandError, CommandExit, CommandMonitor},
+};
+
+#[derive(Debug, Clone, Serialize, Deserialize, Valuable, Error)]
+pub enum FfmpegError {
+    #[error(transparent)]
+    Command {
+        #[from]
+        inner_error: CommandError,
+    },
+    #[error(transparent)]
+    FindBinary {
+        #[from]
+        inner_error: FindBinaryError,
+    },
+    #[error(
+        "Unable to locate ffmpeg on your PATH, set LIBFFMPEG_FFMPEG_PATH to the binary, or update your PATH"
+    )]
+    NotFound,
+}
 
 pub async fn ffmpeg<Prepare>(
     cancellation_token: CancellationToken,
     prepare: Prepare,
-) -> Result<CommandExit, CommandError>
+) -> Result<CommandExit, FfmpegError>
 where
     Prepare: FnOnce(&mut Command),
 {
-    return cmd::run("ffmpeg", None, cancellation_token.child_token(), prepare).await;
+    let Some(ffmpeg_path) = find_binary_env("ffmpeg").await? else {
+        return Err(FfmpegError::NotFound);
+    };
+
+    Ok(cmd::run(ffmpeg_path, None, cancellation_token.child_token(), prepare).await?)
 }
 
 /// NOTE: This adds `-progress pipe:1 -hide_banner -loglevel error` to the BEGINNING of the `prepare`d command
@@ -21,15 +49,17 @@ pub async fn ffmpeg_with_progress<Prepare>(
     tx: tokio::sync::mpsc::Sender<Duration>,
     cancellation_token: CancellationToken,
     prepare: Prepare,
-) -> Result<CommandExit, CommandError>
+) -> Result<CommandExit, FfmpegError>
 where
     Prepare: FnOnce(&mut Command),
 {
     let mut monitor = CommandMonitor::with_capacity(100);
 
-    // TODO: support overriding ffmpeg/ffprobe paths
+    let Some(ffmpeg_path) = find_binary_env("ffmpeg").await? else {
+        return Err(FfmpegError::NotFound);
+    };
     let fut = cmd::run(
-        "ffmpeg",
+        ffmpeg_path,
         Some(monitor.sender),
         cancellation_token.child_token(),
         |cmd| {
@@ -84,5 +114,5 @@ where
     if let Err(_timeout) = tokio::time::timeout(Duration::from_millis(500), handle).await {
         tracing::warn!("Timed out waiting for monitor to close");
     }
-    result
+    Ok(result?)
 }

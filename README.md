@@ -19,6 +19,19 @@ libffmpeg = { git = "https://github.com/charliethomson/libffmpeg" }
 
 ## Usage
 
+### Environment Variables
+
+Both `ffmpeg` and `duration` modules use `find_binary_env()` to locate binaries. Set these if ffmpeg/ffprobe aren't on your `$PATH`:
+
+- `LIBFFMPEG_FFMPEG_PATH` - path to ffmpeg binary
+- `LIBFFMPEG_FFPROBE_PATH` - path to ffprobe binary
+
+```bash
+export LIBFFMPEG_FFMPEG_PATH=/opt/homebrew/bin/ffmpeg
+export LIBFFMPEG_FFPROBE_PATH=/opt/homebrew/bin/ffprobe
+```
+
+`find_binary_env()` checks the env var first, validates it (exists, executable), then falls back to searching `$PATH`.
 
 ### Setup
 Copy `.cargo/config.toml` into your workspace, `tracing` [still](https://github.com/tokio-rs/tracing/discussions/1906) hasnt made `valuable` support stable :/

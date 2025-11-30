@@ -6,9 +6,12 @@ use thiserror::Error;
 use tokio_util::sync::CancellationToken;
 use valuable::Valuable;
 
-use crate::util::{
-    cmd::{self, CommandError, CommandExit},
-    exit::CommandExitCode,
+use crate::{
+    env::find::{FindBinaryError, find_binary_env},
+    util::{
+        cmd::{self, CommandError, CommandExit},
+        exit::CommandExitCode,
+    },
 };
 
 #[derive(Error, Debug, Clone, Serialize, Deserialize, Valuable)]
@@ -17,6 +20,11 @@ pub enum DurationError {
     Command {
         #[from]
         inner_error: CommandError,
+    },
+    #[error(transparent)]
+    FindBinary {
+        #[from]
+        inner_error: FindBinaryError,
     },
 
     #[error("Process returned, but no exit status was present")]
@@ -27,13 +35,21 @@ pub enum DurationError {
     ExpectedLine { result: CommandExit },
     #[error("Failed to parse duration provided by ffprobe: {inner_error}")]
     Parse { inner_error: AnyError },
+    #[error(
+        "Unable to locate ffprobe on your PATH, set LIBFFMPEG_FFPROBE_PATH to the binary, or update your PATH"
+    )]
+    FfprobeNotFound,
 }
 
 pub async fn get_duration<P: AsRef<Path>>(
     input: P,
     cancellation_token: CancellationToken,
 ) -> Result<Duration, DurationError> {
-    let mut result = cmd::run("ffprobe", None, cancellation_token, move |cmd| {
+    let Some(ffprobe_path) = find_binary_env("ffprobe").await? else {
+        return Err(DurationError::FfprobeNotFound);
+    };
+
+    let mut result = cmd::run(ffprobe_path, None, cancellation_token, move |cmd| {
         cmd.arg("-threads").arg("4");
         cmd.arg("-v").arg("quiet");
         cmd.arg("-show_entries").arg("format=duration");

@@ -1,5 +1,6 @@
 use std::{
     ops::ControlFlow,
+    path::Path,
     process::{ExitStatus, Stdio},
     sync::Arc,
 };
@@ -102,7 +103,8 @@ impl Default for CommandMonitor {
 }
 
 impl CommandMonitor {
-    #[must_use] pub fn with_capacity(capacity: usize) -> Self {
+    #[must_use]
+    pub fn with_capacity(capacity: usize) -> Self {
         let (stdout_tx, stdout_rx) = tokio::sync::mpsc::channel(capacity);
         let (stderr_tx, stderr_rx) = tokio::sync::mpsc::channel(capacity);
 
@@ -111,7 +113,8 @@ impl CommandMonitor {
 
         Self { sender, receiver }
     }
-    #[must_use] pub fn new() -> Self {
+    #[must_use]
+    pub fn new() -> Self {
         Self::with_capacity(100)
     }
 }
@@ -240,9 +243,9 @@ impl<StdoutReader: AsyncBufRead + Unpin + Send, StderrReader: AsyncBufRead + Unp
     }
 }
 
-#[tracing::instrument("libffmpeg::cmd::run", skip(prepare))]
-pub async fn run<Prepare>(
-    command: &str,
+#[tracing::instrument("libffmpeg::cmd::run", skip(prepare, command))]
+pub async fn run<Cmd: AsRef<Path>, Prepare>(
+    command: Cmd,
     sender: Option<CommandMonitorSender>,
     cancellation_token: CancellationToken,
     prepare: Prepare,
@@ -250,7 +253,7 @@ pub async fn run<Prepare>(
 where
     Prepare: FnOnce(&mut Command),
 {
-    let mut cmd = Command::new(command);
+    let mut cmd = Command::new(command.as_ref());
 
     prepare(&mut cmd);
 
