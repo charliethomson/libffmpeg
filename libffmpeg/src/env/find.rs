@@ -331,14 +331,14 @@ async fn validate_binary<P: AsRef<Path>>(path: P) -> Result<PathBuf, FindBinaryE
     Ok(path)
 }
 
-#[instrument(fields(binary_name = %name, has_given_path = given_path.is_some()))]
+#[instrument(fields(has_given_path = given_path.is_some()))]
 pub async fn find_binary(
-    name: &str,
+    binary_name: &str,
     search_paths: String,
     given_path: Option<PathBuf>,
 ) -> Result<Option<PathBuf>, FindBinaryError> {
     tracing::info!(
-        binary_name = %name,
+        binary_name = %binary_name,
         has_given_path = given_path.is_some(),
         "Starting binary search"
     );
@@ -346,7 +346,7 @@ pub async fn find_binary(
     // Check given path first
     if let Some(given_path) = given_path {
         tracing::debug!(
-            binary_name = %name,
+            binary_name = %binary_name,
             given_path = %given_path.display(),
             "Checking given path"
         );
@@ -354,7 +354,7 @@ pub async fn find_binary(
         match validate_binary(&given_path).await {
             Ok(path) => {
                 tracing::info!(
-                    binary_name = %name,
+                    binary_name = %binary_name,
                     binary_path = %path.display(),
                     "Found binary at given path"
                 );
@@ -363,7 +363,7 @@ pub async fn find_binary(
             }
             Err(e) => {
                 tracing::warn!(
-                    binary_name = %name,
+                    binary_name = %binary_name,
                     given_path = %given_path.display(),
                     error =% e,
                     "Unable to validate given path"
@@ -376,7 +376,7 @@ pub async fn find_binary(
     let search_paths = std::env::split_paths(&search_paths).collect::<Vec<_>>();
 
     tracing::debug!(
-        binary_name = %name,
+        binary_name = %binary_name,
         path_count = search_paths.len(),
         "Scanning search paths"
     );
@@ -384,9 +384,9 @@ pub async fn find_binary(
     let mut search_tasks = JoinSet::new();
     let current_span = Span::current();
     for path in search_paths {
-        let name = name.to_string();
-        let span = tracing::debug_span!(parent: &current_span, "scan_task", path =% path.display(), name =% name);
-        search_tasks.spawn(scan_path(path, name).instrument(span));
+        let binary_name = binary_name.to_string();
+        let span = tracing::debug_span!(parent: &current_span, "scan_task", path =% path.display(), binary_name =% binary_name);
+        search_tasks.spawn(scan_path(path, binary_name).instrument(span));
     }
 
     // TODO: what to do about errors
@@ -394,7 +394,7 @@ pub async fn find_binary(
         match next {
             Ok(Ok(Some(path))) => {
                 tracing::info!(
-                    binary_name = %name,
+                    binary_name = %binary_name,
                     binary_path = %path.display(),
                     "Binary found in search paths"
                 );
@@ -413,19 +413,19 @@ pub async fn find_binary(
     }
 
     tracing::warn!(
-        binary_name = %name,
+        binary_name = %binary_name,
         "Binary not found in any search paths"
     );
 
     Ok(None)
 }
 
-#[instrument(fields(binary_name = %name))]
-pub async fn find_binary_env(name: &str) -> Result<Option<PathBuf>, FindBinaryError> {
-    let env_key = format!("LIBFFMPEG_{}_PATH", name.to_ascii_uppercase());
+#[instrument()]
+pub async fn find_binary_env(binary_name: &str) -> Result<Option<PathBuf>, FindBinaryError> {
+    let env_key = format!("LIBFFMPEG_{}_PATH", binary_name.to_ascii_uppercase());
 
     tracing::debug!(
-        binary_name = %name,
+        binary_name = %binary_name,
         env_key = %env_key,
         "Searching for binary using environment variables"
     );
@@ -471,5 +471,5 @@ pub async fn find_binary_env(name: &str) -> Result<Option<PathBuf>, FindBinaryEr
         "Retrieved $PATH environment variable"
     );
 
-    find_binary(name, search_paths, env_var).await
+    find_binary(binary_name, search_paths, env_var).await
 }
