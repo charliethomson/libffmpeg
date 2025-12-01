@@ -20,16 +20,16 @@ use crate::util::{exit::CommandExitCode, read::reader_or_never};
 
 #[derive(Debug, Clone, Serialize, Deserialize, Valuable, Error)]
 pub enum CommandError {
-    #[error("cancellation requested")]
+    #[error("Command execution cancelled")]
     Cancelled,
 
-    #[error("failed to spawn: {inner_error}")]
+    #[error("Failed to spawn command process: {inner_error}")]
     BadSpawn { inner_error: AnyError },
 
-    #[error("exited unsuccessfully: {inner_error}")]
+    #[error("Command process exited with error: {inner_error}")]
     BadExit { inner_error: AnyError },
 
-    #[error("failed to acquire permit: {inner_error}")]
+    #[error("Failed to acquire permit for command execution: {inner_error}")]
     Acquire { inner_error: AnyError },
 }
 
@@ -170,18 +170,28 @@ impl<StdoutReader: AsyncBufRead + Unpin + Send, StderrReader: AsyncBufRead + Unp
             Ok(status) => {
                 self.result.exit_code = Some(status.into());
                 if status.success() {
-                    tracing::trace!("command process completed successfully");
+                    tracing::debug!(
+                        exit_code = ?status.code(),
+                        stdout_lines = self.result.stdout_lines.len(),
+                        stderr_lines = self.result.stderr_lines.len(),
+                        "Command process completed successfully"
+                    );
                 } else {
                     tracing::error!(
                         exit_code = ?status.code(),
-                        stderr_lines = ?self.result.stderr_lines,
-                        "command process completed with non-zero exit code"
+                        stdout_lines = self.result.stdout_lines.len(),
+                        stderr_lines = self.result.stderr_lines.len(),
+                        stderr = ?self.result.stderr_lines,
+                        "Command process completed with non-zero exit code"
                     );
                 }
                 ControlFlow::Break(Ok(self.result.clone()))
             }
             Err(e) => {
-                tracing::error!(error = %e, "command process wait failed");
+                tracing::error!(
+                    error = %e,
+                    "Failed to wait for command process"
+                );
                 ControlFlow::Break(Err(CommandError::BadExit {
                     inner_error: e.into(),
                 }))
@@ -192,41 +202,60 @@ impl<StdoutReader: AsyncBufRead + Unpin + Send, StderrReader: AsyncBufRead + Unp
     #[tracing::instrument(level=Level::DEBUG, "command_context::on_cancelled", skip(self))]
     async fn on_cancelled(&mut self) -> ControlFlow<Result<CommandExit, CommandError>> {
         tracing::warn!("Cancellation requested, terminating command process");
-        self.child.kill().await.expect("Failed to kill ffmpeg");
-        return ControlFlow::Break(Err(CommandError::Cancelled));
+
+        if let Err(e) = self.child.kill().await {
+            tracing::error!(
+                error = %e,
+                "Failed to kill command process during cancellation"
+            );
+        } else {
+            tracing::debug!("Successfully killed command process");
+        }
+
+        ControlFlow::Break(Err(CommandError::Cancelled))
     }
 
-    #[tracing::instrument(level=Level::DEBUG, "command_context::on_stdout_line", skip(self))]
+    #[tracing::instrument(level=Level::TRACE, "command_context::on_stdout_line", skip(self, line), fields(line_preview = %line.chars().take(100).collect::<String>()))]
     async fn on_stdout_line(
         &mut self,
         line: String,
     ) -> ControlFlow<Result<CommandExit, CommandError>> {
         self.result.stdout_lines.push(line.clone());
-        tracing::debug!(line = line, "command wrote to stdout");
+        tracing::trace!(line = %line, "Command wrote to stdout");
+
         let Some(sender) = self.sender.clone() else {
             return ControlFlow::Continue(());
         };
 
-        if let Err(e) = sender.stdout_tx.send(line).await {
-            tracing::error!(error =% e, error_context =? e, "Failed to write stdout line to channel");
+        if let Err(e) = sender.stdout_tx.send(line.clone()).await {
+            tracing::error!(
+                error = %e,
+                line = %line,
+                "Failed to send stdout line to monitor channel"
+            );
         }
 
         ControlFlow::Continue(())
     }
 
-    #[tracing::instrument(level=Level::DEBUG, "command_context::on_stderr_line", skip(self))]
+    #[tracing::instrument(level=Level::DEBUG, "command_context::on_stderr_line", skip(self, line), fields(line_preview = %line.chars().take(100).collect::<String>()))]
     async fn on_stderr_line(
         &mut self,
         line: String,
     ) -> ControlFlow<Result<CommandExit, CommandError>> {
         self.result.stderr_lines.push(line.clone());
-        tracing::debug!(line = line, "command wrote to stderr");
+        tracing::debug!(line = %line, "Command wrote to stderr");
+
         let Some(sender) = self.sender.clone() else {
             return ControlFlow::Continue(());
         };
 
-        if let Err(e) = sender.stderr_tx.send(line).await {
-            tracing::error!(error =% e, error_context =? e, "Failed to write stdout line to channel");
+        if let Err(e) = sender.stderr_tx.send(line.clone()).await {
+            tracing::error!(
+                error = %e,
+                line = %line,
+                "Failed to send stderr line to monitor channel"
+            );
         }
 
         ControlFlow::Continue(())
@@ -243,7 +272,7 @@ impl<StdoutReader: AsyncBufRead + Unpin + Send, StderrReader: AsyncBufRead + Unp
     }
 }
 
-#[tracing::instrument("libffmpeg::cmd::run", skip(prepare, command))]
+#[tracing::instrument("libffmpeg::cmd::run", skip(prepare, command, sender, cancellation_token), fields(command_path = %command.as_ref().display()))]
 pub async fn run<Cmd: AsRef<Path>, Prepare>(
     command: Cmd,
     sender: Option<CommandMonitorSender>,
@@ -253,18 +282,43 @@ pub async fn run<Cmd: AsRef<Path>, Prepare>(
 where
     Prepare: FnOnce(&mut Command),
 {
+    tracing::debug!(
+        command_path = %command.as_ref().display(),
+        has_monitor = sender.is_some(),
+        "Preparing to execute command"
+    );
+
     let mut cmd = Command::new(command.as_ref());
 
     prepare(&mut cmd);
 
-    tracing::info!(args = ?cmd.as_std().get_args().collect::<Vec<_>>(), "Executing command");
+    tracing::info!(
+        command_path = %command.as_ref().display(),
+        args = ?cmd.as_std().get_args().collect::<Vec<_>>(),
+        "Executing command"
+    );
 
     cmd.stdout(Stdio::piped());
     cmd.stderr(Stdio::piped());
 
-    let mut child = cmd.spawn().map_err(|e| CommandError::BadSpawn {
-        inner_error: e.into(),
-    })?;
+    let mut child = cmd
+        .spawn()
+        .map_err(|e| {
+            tracing::error!(
+                command_path = %command.as_ref().display(),
+                error = %e,
+                "Failed to spawn command process"
+            );
+            CommandError::BadSpawn {
+                inner_error: e.into(),
+            }
+        })
+        .inspect(|child| {
+            tracing::debug!(
+                pid = ?child.id(),
+                "Command process spawned successfully"
+            );
+        })?;
 
     let stdout = reader_or_never(child.stdout.take());
     let stdout = BufReader::new(stdout).lines();
@@ -272,11 +326,25 @@ where
     let stderr = reader_or_never(child.stderr.take());
     let stderr = BufReader::new(stderr).lines();
 
+    tracing::trace!("Starting command event loop");
+
     let mut context = CommandContext::new(child, sender, stdout, stderr, cancellation_token);
 
     loop {
         if let ControlFlow::Break(result) = context.tick().await {
-            return result;
+            return result
+                .inspect(|exit| {
+                    tracing::debug!(
+                        exit_code = ?exit.exit_code,
+                        "Command execution completed"
+                    );
+                })
+                .inspect_err(|e| {
+                    tracing::error!(
+                        error = %e,
+                        "Command execution failed"
+                    );
+                });
         }
     }
 }

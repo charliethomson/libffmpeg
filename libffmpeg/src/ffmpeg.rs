@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use tokio::process::Command;
 use tokio_util::{future::FutureExt, sync::CancellationToken};
+use tracing::instrument;
 use valuable::Valuable;
 
 use crate::{
@@ -29,6 +30,7 @@ pub enum FfmpegError {
     NotFound,
 }
 
+#[instrument(skip(prepare, cancellation_token))]
 pub async fn ffmpeg<Prepare>(
     cancellation_token: CancellationToken,
     prepare: Prepare,
@@ -36,15 +38,41 @@ pub async fn ffmpeg<Prepare>(
 where
     Prepare: FnOnce(&mut Command),
 {
-    let Some(ffmpeg_path) = find_binary_env("ffmpeg").await? else {
+    tracing::debug!("Starting ffmpeg execution");
+
+    let Some(ffmpeg_path) = find_binary_env("ffmpeg").await.inspect_err(|e| {
+        tracing::error!(
+            error = %e,
+            "Failed to search for ffmpeg binary"
+        );
+    })?
+    else {
+        tracing::error!("ffmpeg binary not found");
         return Err(FfmpegError::NotFound);
     };
 
-    Ok(cmd::run(ffmpeg_path, None, cancellation_token.child_token(), prepare).await?)
+    tracing::info!(
+        ffmpeg_path = %ffmpeg_path.display(),
+        "Executing ffmpeg"
+    );
+
+    cmd::run(ffmpeg_path, None, cancellation_token.child_token(), prepare)
+        .await
+        .inspect(|exit| {
+            tracing::debug!(exit = exit.as_value(), "ffmpeg completed");
+        })
+        .inspect_err(|e| {
+            tracing::error!(
+                error = %e,
+                "ffmpeg execution failed"
+            );
+        })
+        .map_err(Into::into)
 }
 
 /// NOTE: This adds `-progress pipe:1 -hide_banner -loglevel error` to the BEGINNING of the `prepare`d command
-#[tracing::instrument("libffmpeg::ffmpeg::progress", skip(prepare))]
+#[tracing::instrument("libffmpeg::ffmpeg::progress", skip(prepare, tx, cancellation_token))]
+#[allow(clippy::too_many_lines)]
 pub async fn ffmpeg_with_progress<Prepare>(
     tx: tokio::sync::mpsc::Sender<Duration>,
     cancellation_token: CancellationToken,
@@ -53,11 +81,26 @@ pub async fn ffmpeg_with_progress<Prepare>(
 where
     Prepare: FnOnce(&mut Command),
 {
-    let mut monitor = CommandMonitor::with_capacity(100);
+    tracing::debug!("Starting ffmpeg execution");
 
-    let Some(ffmpeg_path) = find_binary_env("ffmpeg").await? else {
+    let Some(ffmpeg_path) = find_binary_env("ffmpeg").await.inspect_err(|e| {
+        tracing::error!(
+            error = %e,
+            "Failed to search for ffmpeg binary"
+        );
+    })?
+    else {
+        tracing::error!("ffmpeg binary not found");
         return Err(FfmpegError::NotFound);
     };
+
+    tracing::info!(
+        ffmpeg_path = %ffmpeg_path.display(),
+        "Executing ffmpeg"
+    );
+
+    let mut monitor = CommandMonitor::with_capacity(100);
+
     let fut = cmd::run(
         ffmpeg_path,
         Some(monitor.sender),
@@ -74,11 +117,18 @@ where
     let handle = {
         let monitor_token = monitor_token.clone();
         tokio::spawn(async move {
+            tracing::debug!("Starting progress monitor loop");
             loop {
                 let delivery = match monitor.receiver.recv().with_cancellation_token(&monitor_token).await {
                 Some(Some(delivery)) => delivery,
-                Some(None) /* closed */ => break,
-                None /* cancelled */ => break,
+                Some(None) /* closed */ => {
+                    tracing::debug!("Progress monitor channel closed");
+                    break;
+                },
+                None /* cancelled */ => {
+                    tracing::debug!("Progress monitor cancelled");
+                    break;
+                },
             };
 
                 match delivery {
@@ -87,9 +137,11 @@ where
                             continue;
                         }
                         let Some(duration_us) = line.split_once('=').map(|x| x.1) else {
+                            tracing::trace!(line = %line, "Progress line missing '=' separator");
                             continue;
                         };
                         let Ok(duration_us) = duration_us.parse::<f64>() else {
+                            tracing::warn!(duration_str = %duration_us, "Failed to parse progress duration");
                             continue;
                         };
 
@@ -97,22 +149,53 @@ where
                         if duration_seconds < f64::EPSILON {
                             continue;
                         }
-                        if let Err(e) = tx.send(Duration::from_secs_f64(duration_seconds)).await {
-                            tracing::warn!("Failed to send progress: {e}");
-                        }
+
+                        let duration = Duration::from_secs_f64(duration_seconds);
+                        tracing::trace!(
+                            duration_seconds = %duration_seconds,
+                            "Sending progress update"
+                        );
+
+                        let _ = tx.send(duration).await.inspect_err(|e| {
+                            tracing::warn!(
+                                error = %e,
+                                "Failed to send progress update to channel"
+                            );
+                        });
                     }
                     // dont care!
-                    cmd::CommandMonitorMessage::Stderr { line } => drop(line),
+                    cmd::CommandMonitorMessage::Stderr { line } => {
+                        tracing::trace!(stderr_line = %line, "Received stderr from ffmpeg");
+                        drop(line);
+                    }
                 }
             }
+            tracing::debug!("Progress monitor loop completed");
         })
     };
 
     let result = fut.await;
     monitor_token.cancel();
+
+    tracing::debug!("Waiting for progress monitor to shutdown");
     // This should never block, but w/e :)
-    if let Err(_timeout) = tokio::time::timeout(Duration::from_millis(500), handle).await {
-        tracing::warn!("Timed out waiting for monitor to close");
-    }
-    Ok(result?)
+    let _ = tokio::time::timeout(Duration::from_millis(500), handle)
+        .await
+        .inspect(|_| tracing::trace!("Progress monitor shutdown successfully"))
+        .inspect_err(|_| tracing::warn!("Timed out waiting for progress monitor to close"));
+
+    result
+        .inspect(|exit| {
+            tracing::debug!(
+                exit_code = ?exit.exit_code,
+                "ffmpeg with progress completed"
+            );
+        })
+        .inspect_err(|e| {
+            tracing::error!(
+                error = %e,
+                "ffmpeg with progress execution failed"
+            );
+        })
+        .map_err(Into::into)
 }
