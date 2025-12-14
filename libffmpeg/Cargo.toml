@@ -4,16 +4,21 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
-derive_builder.workspace = true
-liberror.workspace = true
-serde.workspace = true
-strum.workspace = true
-thiserror.workspace = true
-tokio.workspace = true
-tokio-util.workspace = true
-tracing.workspace = true
-uuid.workspace = true
-valuable.workspace = true
+liberror = { git = "https://github.com/charliethomson/liberror" }
+libsignal = { git = "https://github.com/charliethomson/libsignal" }
+libcmd = { git = "https://github.com/charliethomson/libcmd" }
+
+
+derive_builder = { version = "0.20.2" }
+serde = { version = "1.0.219", features = ["derive"] }
+strum = { version = "0.27.2", features = ["strum_macros", "derive"] }
+thiserror = { version = "2.0.16" }
+tokio = { version = "1.47.1", features = ["full"] }
+tokio-util = { version = "0.7.16" }
+tracing = { version = "0.1.41", features = ["valuable"] }
+uuid = { version = "1.18.1", features = ["serde", "v4"] }
+valuable = { version = "0.1.1", features = ["derive"] }
+
 
 [lints]
 workspace = true

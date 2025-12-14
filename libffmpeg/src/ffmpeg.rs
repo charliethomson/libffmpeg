@@ -1,5 +1,8 @@
 use std::time::Duration;
 
+use libcmd::{
+    CommandError, CommandExit, CommandMonitor, CommandMonitorClient, CommandMonitorServer,
+};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use tokio::process::Command;
@@ -7,10 +10,7 @@ use tokio_util::{future::FutureExt, sync::CancellationToken};
 use tracing::instrument;
 use valuable::Valuable;
 
-use crate::{
-    env::find::{FindBinaryError, find_binary_env},
-    util::cmd::{self, CommandError, CommandExit, CommandMonitor},
-};
+use crate::env::find::{FindBinaryError, find_binary_env};
 
 #[derive(Debug, Clone, Serialize, Deserialize, Valuable, Error)]
 pub enum FfmpegError {
@@ -56,7 +56,7 @@ where
         "Executing ffmpeg"
     );
 
-    cmd::run(ffmpeg_path, None, cancellation_token.child_token(), prepare)
+    libcmd::run(ffmpeg_path, None, cancellation_token.child_token(), prepare)
         .await
         .inspect(|exit| {
             tracing::debug!(exit = exit.as_value(), "ffmpeg completed");
@@ -101,9 +101,9 @@ where
 
     let mut monitor = CommandMonitor::with_capacity(100);
 
-    let fut = cmd::run(
+    let fut = libcmd::run(
         ffmpeg_path,
-        Some(monitor.sender),
+        Some(monitor.server),
         cancellation_token.child_token(),
         |cmd| {
             cmd.arg("-hide_banner");
@@ -119,7 +119,7 @@ where
         tokio::spawn(async move {
             tracing::debug!("Starting progress monitor loop");
             loop {
-                let delivery = match monitor.receiver.recv().with_cancellation_token(&monitor_token).await {
+                let delivery = match monitor.client.recv().with_cancellation_token(&monitor_token).await {
                 Some(Some(delivery)) => delivery,
                 Some(None) /* closed */ => {
                     tracing::debug!("Progress monitor channel closed");
@@ -132,7 +132,7 @@ where
             };
 
                 match delivery {
-                    cmd::CommandMonitorMessage::Stdout { line } => {
+                    libcmd::CommandMonitorMessage::Stdout { line } => {
                         if !line.starts_with("out_time_us") {
                             continue;
                         }
@@ -164,7 +164,7 @@ where
                         });
                     }
                     // dont care!
-                    cmd::CommandMonitorMessage::Stderr { line } => {
+                    libcmd::CommandMonitorMessage::Stderr { line } => {
                         tracing::trace!(stderr_line = %line, "Received stderr from ffmpeg");
                         drop(line);
                     }
@@ -198,4 +198,101 @@ where
             );
         })
         .map_err(Into::into)
+}
+
+#[instrument(skip_all)]
+pub async fn ffmpeg_graceful<Prepare>(
+    cancellation_token: CancellationToken,
+    client: &mut CommandMonitorClient,
+    server: &mut CommandMonitorServer,
+    prepare: Prepare,
+) -> Result<CommandExit, FfmpegError>
+where
+    Prepare: FnOnce(&mut Command),
+{
+    tracing::debug!("Starting ffmpeg execution");
+
+    let ffmpeg_path = find_binary_env("ffmpeg")
+        .await
+        .inspect_err(|e| tracing::error!(error = %e, "Failed to search for ffmpeg binary"))?
+        .ok_or(FfmpegError::NotFound)
+        .inspect_err(
+            |e| tracing::error!(error =% e, error_context =? e, "ffmpeg binary not found"),
+        )?;
+
+    tracing::info!(
+        ffmpeg_path = %ffmpeg_path.display(),
+        "Executing ffmpeg"
+    );
+
+    // Different source token for the process, lets us gracefully exit
+    let process_token = CancellationToken::new();
+
+    // Cancelled after the process exits
+    let exit_token = CancellationToken::new();
+
+    // Flow:
+    //  1. If the process exits naturally before cancellation, do nothing and return early
+    //  2. User requests cancellation
+    //  3. Send "q" to ffmpeg's stdin
+    //  4. Give the process a max of 5 seconds to exit (wait using `exit_token`, quit should tell the process to exit normally)
+    //  5. If the process doesn't exit after 5 seconds, cancel the process' token, signals that it should send SIGKILL
+    //  6. The process will be killed, as if none of this was ever here
+    let kill_handle = {
+        let client = client.clone();
+        let process_token = process_token.clone();
+        let exit_token = exit_token.clone();
+        let kill_token = cancellation_token.child_token();
+        // TODO: Instrument
+        tokio::spawn(async move {
+            // Wait for kill token to cancel (user requested cancellation)
+            tokio::select! {
+                _ = exit_token.cancelled() => {
+                    // if process exits before kill is requested, we don't want to kill the process
+                    return
+                },
+                _ = kill_token.cancelled() => {
+                    // Continue killing the process
+                }
+            }
+
+            // Send quit
+            client.send("q").await;
+
+            // Wait for exit to be cancelled (process exited), with max of 5 seconds
+            match tokio::time::timeout(Duration::from_secs(5), exit_token.cancelled()).await {
+                Ok(_) => {}
+                Err(_timeout) => {
+                    // Process didn't respond to quit command, tell the manager to kill the process
+                    process_token.cancel();
+                }
+            }
+        })
+    };
+
+    let result = libcmd::run(
+        ffmpeg_path,
+        Some(server.clone()),
+        process_token.child_token(),
+        prepare,
+    )
+    .await
+    .inspect(|exit| {
+        tracing::debug!(exit = exit.as_value(), "ffmpeg completed");
+    })
+    .inspect_err(|e| {
+        tracing::error!(
+            error = %e,
+            "ffmpeg execution failed"
+        );
+    })
+    .map_err(Into::into);
+
+    exit_token.cancel();
+
+    if let Err(e) = kill_handle.await {
+        tracing::error!(error=%e, error_context=?e,"Failed to wait for kill handle to exit")
+    };
+
+    result
 }

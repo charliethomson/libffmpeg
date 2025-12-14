@@ -112,6 +112,15 @@ async fn scan_path(
         search_name = %search_name,
         "Scanning path for binary"
     );
+
+    if !search_path.exists() {
+        tracing::debug!(
+            search_path = %search_path.display(),
+            "Search path is inaccessible"
+        );
+        return Ok(None);
+    }
+
     let search_path = tokio::fs::canonicalize(&search_path)
         .await
         .map_err(|e| FindBinaryError::SearchPathCanonicalize {
@@ -331,7 +340,7 @@ async fn validate_binary<P: AsRef<Path>>(path: P) -> Result<PathBuf, FindBinaryE
     Ok(path)
 }
 
-#[instrument(fields(has_given_path = given_path.is_some()))]
+#[instrument(fields(has_given_path = given_path.is_some()), skip(search_paths))]
 pub async fn find_binary(
     binary_name: &str,
     search_paths: String,

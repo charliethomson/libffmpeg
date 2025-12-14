@@ -7,13 +7,9 @@ use tokio_util::sync::CancellationToken;
 use tracing::instrument;
 use valuable::Valuable;
 
-use crate::{
-    env::find::{FindBinaryError, find_binary_env},
-    util::{
-        cmd::{self, CommandError, CommandExit},
-        exit::CommandExitCode,
-    },
-};
+use crate::env::find::{FindBinaryError, find_binary_env};
+
+use libcmd::{CommandError, CommandExit, CommandExitCode};
 
 #[derive(Error, Debug, Clone, Serialize, Deserialize, Valuable)]
 pub enum DurationError {
@@ -70,7 +66,7 @@ pub async fn get_duration<P: AsRef<Path>>(
         "Executing ffprobe to get duration"
     );
 
-    let mut result = cmd::run(ffprobe_path, None, cancellation_token, move |cmd| {
+    let mut result = libcmd::run(ffprobe_path, None, cancellation_token, move |cmd| {
         cmd.arg("-threads").arg("4");
         cmd.arg("-v").arg("quiet");
         cmd.arg("-show_entries").arg("format=duration");
