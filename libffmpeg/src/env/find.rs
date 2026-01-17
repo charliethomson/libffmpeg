@@ -201,7 +201,7 @@ async fn scan_path(
             );
         })?
     {
-        let entry_name = entry.file_stem().to_string_lossy().to_string();
+        let entry_name = entry.path().file_stem().to_string_lossy().to_string();
         tracing::trace!(
             entry_name = %entry_name,
             search_name = %search_name,
