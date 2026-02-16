@@ -83,6 +83,7 @@ impl PartialProgress {
         true
     }
 
+    #[must_use] 
     pub fn finish(&self) -> Option<Progress> {
         let progress = match &self.progress {
             PartialProgressState::Unset => return None,

@@ -54,11 +54,11 @@ where
             async move {
                 // Wait for kill token to cancel (user requested cancellation)
                 tokio::select! {
-                    _ = exit_token.cancelled() => {
+                    () = exit_token.cancelled() => {
                         // if process exits before kill is requested, we don't want to kill the process
                         return
                     },
-                    _ = kill_token.cancelled() => {
+                    () = kill_token.cancelled() => {
                         // Continue killing the process
                     }
                 }
@@ -68,7 +68,7 @@ where
 
                 // Wait for exit to be cancelled (process exited), with max of 5 seconds
                 match tokio::time::timeout(Duration::from_secs(5), exit_token.cancelled()).await {
-                    Ok(_) => {}
+                    Ok(()) => {}
                     Err(_timeout) => {
                         // Process didn't respond to quit command, tell the manager to kill the process
                         tracing::warn!(
@@ -103,8 +103,8 @@ where
     exit_token.cancel();
 
     if let Err(e) = shutdown_handle.await {
-        tracing::error!(error=%e, error_context=?e,"Failed to wait for shutdown handle to exit")
-    };
+        tracing::error!(error=%e, error_context=?e,"Failed to wait for shutdown handle to exit");
+    }
 
     result
 }
