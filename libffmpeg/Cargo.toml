@@ -4,10 +4,10 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
-liberror = { git = "https://github.com/charliethomson/liberror" }
-libsignal = { git = "https://github.com/charliethomson/libsignal" }
-libcmd = { git = "https://github.com/charliethomson/libcmd" }
-
+liberror.workspace = true
+libsignal.workspace = true
+libcmd.workspace = true
+libwhich.workspace = true
 
 derive_builder = { version = "0.20.2" }
 serde = { version = "1.0.219", features = ["derive"] }
@@ -19,6 +19,11 @@ tracing = { version = "0.1.41", features = ["valuable"] }
 uuid = { version = "1.18.1", features = ["serde", "v4"] }
 valuable = { version = "0.1.1", features = ["derive"] }
 
+[dev-dependencies]
+anyhow = { version = "1" }
+clap = { version = "4", features = ["derive"] }
+humansize = { version = "2" }
+humantime = { version = "2" }
 
 [lints]
 workspace = true

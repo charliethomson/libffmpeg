@@ -7,21 +7,16 @@ use tokio_util::sync::CancellationToken;
 use tracing::instrument;
 use valuable::Valuable;
 
-use crate::env::find::{FindBinaryError, find_binary_env};
+use libcmd::{CommandExit, CommandExitCode};
 
-use libcmd::{CommandError, CommandExit, CommandExitCode};
+use crate::ffprobe::{FfprobeError, ffprobe};
 
 #[derive(Error, Debug, Clone, Serialize, Deserialize, Valuable)]
 pub enum DurationError {
     #[error(transparent)]
-    Command {
+    Ffprobe {
         #[from]
-        inner_error: CommandError,
-    },
-    #[error(transparent)]
-    FindBinary {
-        #[from]
-        inner_error: FindBinaryError,
+        inner_error: FfprobeError,
     },
 
     #[error("Process returned, but no exit status was present: stdout_lines={}, stderr_lines={}", result.stdout_lines.len(), result.stderr_lines.len())]
@@ -32,10 +27,6 @@ pub enum DurationError {
     ExpectedLine { result: CommandExit },
     #[error("Failed to parse duration provided by ffprobe: {inner_error}")]
     Parse { inner_error: AnyError },
-    #[error(
-        "Unable to locate ffprobe on your PATH, set LIBFFMPEG_FFPROBE_PATH to the binary, or update your PATH"
-    )]
-    FfprobeNotFound,
 }
 
 #[instrument(skip(input, cancellation_token), fields(input_path = %input.as_ref().display()))]
@@ -44,50 +35,19 @@ pub async fn get_duration<P: AsRef<Path>>(
     input: P,
     cancellation_token: CancellationToken,
 ) -> Result<Duration, DurationError> {
-    tracing::debug!(
-        input_path = %input.as_ref().display(),
-        "Starting duration extraction"
-    );
-
-    let Some(ffprobe_path) = find_binary_env("ffprobe").await.inspect_err(|e| {
-        tracing::error!(
-            error = %e,
-            "Failed to search for ffprobe binary"
-        );
-    })?
-    else {
-        tracing::error!("ffprobe binary not found");
-        return Err(DurationError::FfprobeNotFound);
-    };
-
     tracing::info!(
-        ffprobe_path = %ffprobe_path.display(),
         input_path = %input.as_ref().display(),
         "Executing ffprobe to get duration"
     );
 
-    let mut result = libcmd::run(ffprobe_path, None, cancellation_token, move |cmd| {
+    let mut result = ffprobe(cancellation_token, move |cmd| {
         cmd.arg("-threads").arg("4");
         cmd.arg("-v").arg("quiet");
         cmd.arg("-show_entries").arg("format=duration");
         cmd.arg("-of").arg("default=noprint_wrappers=1:nokey=1");
         cmd.arg(input.as_ref());
     })
-    .await
-    .inspect(|exit| {
-        tracing::debug!(
-            exit_code = ?exit.exit_code,
-            stdout_lines = exit.stdout_lines.len(),
-            stderr_lines = exit.stderr_lines.len(),
-            "ffprobe completed"
-        );
-    })
-    .inspect_err(|e| {
-        tracing::error!(
-            error = %e,
-            "ffprobe execution failed"
-        );
-    })?;
+    .await?;
 
     let Some(exit_code) = result.exit_code.take() else {
         tracing::error!(
