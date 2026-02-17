@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use valuable::Valuable;
 
+/// Errors that can occur when running ffprobe.
 #[derive(Debug, Clone, Serialize, Deserialize, Valuable, Error)]
 pub enum FfprobeError {
     #[error(transparent)]

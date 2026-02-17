@@ -6,6 +6,11 @@ use valuable::Valuable;
 
 use crate::ffprobe::{error::FfprobeError, find::find_ffprobe};
 
+/// Run ffprobe with cancellation support.
+///
+/// Locates the ffprobe binary (via `LIBFFMPEG_FFPROBE_PATH` or `$PATH`),
+/// spawns it with the arguments configured by `prepare`, and returns
+/// the captured stdout/stderr and exit code.
 #[instrument(skip(prepare, cancellation_token))]
 pub async fn ffprobe<Prepare>(
     cancellation_token: CancellationToken,

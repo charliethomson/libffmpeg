@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use valuable::Valuable;
 
+/// Errors that can occur when running ffmpeg.
 #[derive(Debug, Clone, Serialize, Deserialize, Valuable, Error)]
 pub enum FfmpegError {
     #[error(transparent)]

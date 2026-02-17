@@ -11,6 +11,7 @@ use libcmd::{CommandExit, CommandExitCode};
 
 use crate::ffprobe::{FfprobeError, ffprobe};
 
+/// Errors that can occur when extracting a media file's duration via ffprobe.
 #[derive(Error, Debug, Clone, Serialize, Deserialize, Valuable)]
 pub enum DurationError {
     #[error(transparent)]
@@ -29,6 +30,10 @@ pub enum DurationError {
     Parse { inner_error: AnyError },
 }
 
+/// Extract the duration of a media file using ffprobe.
+///
+/// Runs ffprobe in quiet mode and parses the `format=duration` entry
+/// from the output. Returns the duration as a [`std::time::Duration`].
 #[instrument(skip(input, cancellation_token), fields(input_path = %input.as_ref().display()))]
 #[allow(clippy::too_many_lines)]
 pub async fn get_duration<P: AsRef<Path>>(

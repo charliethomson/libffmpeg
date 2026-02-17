@@ -6,6 +6,12 @@ use valuable::Valuable;
 
 use crate::ffmpeg::{error::FfmpegError, find::find_ffmpeg};
 
+/// Run ffmpeg with output monitoring via a [`CommandMonitorServer`].
+///
+/// Stdout and stderr lines are streamed through the monitor, allowing
+/// real-time progress parsing or logging. On cancellation the process
+/// is killed immediately — use [`super::ffmpeg_graceful`] if you need
+/// stdin-based quit with a SIGKILL fallback.
 #[instrument(skip_all)]
 pub async fn ffmpeg<Prepare>(
     cancellation_token: CancellationToken,

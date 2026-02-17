@@ -8,6 +8,11 @@ use valuable::Valuable;
 
 use crate::ffmpeg::{error::FfmpegError, find::find_ffmpeg};
 
+/// Run ffmpeg with output monitoring and graceful shutdown.
+///
+/// On cancellation, sends `q` to ffmpeg's stdin (its built-in quit command),
+/// giving the process up to 5 seconds to exit cleanly before falling back to
+/// SIGKILL. This allows ffmpeg to finalize the output file properly.
 #[instrument(skip_all)]
 pub async fn ffmpeg_graceful<Prepare>(
     cancellation_token: CancellationToken,

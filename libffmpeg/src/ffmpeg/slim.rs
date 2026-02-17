@@ -6,6 +6,11 @@ use valuable::Valuable;
 
 use crate::ffmpeg::{error::FfmpegError, find::find_ffmpeg};
 
+/// Run ffmpeg with cancellation support only (no output monitoring).
+///
+/// This is the lightest-weight variant — it spawns ffmpeg, waits for it to
+/// complete, and returns the exit result. Use [`super::ffmpeg`] if you need
+/// to stream stdout/stderr, or [`super::ffmpeg_graceful`] for graceful shutdown.
 #[instrument(skip(prepare, cancellation_token))]
 pub async fn ffmpeg_slim<Prepare>(
     cancellation_token: CancellationToken,

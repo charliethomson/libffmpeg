@@ -1,7 +1,7 @@
 [workspace]
 resolver='2'
 package.edition="2024"
-package.version = "0.1.4"
+package.version = "0.1.5"
 
 members = [ "libffmpeg" ]
 
@@ -24,19 +24,16 @@ match_same_arms = { level = "allow", priority = 1 }
 
 
 [workspace.dependencies]
-liberror = { git = "https://github.com/charliethomson/liberror" }
-libcmd = { git = "https://github.com/charliethomson/libcmd" }
-libsignal = { git = "https://github.com/charliethomson/libsignal" }
-libwhich = { git = "https://github.com/charliethomson/which" }
+liberror = { git = "https://github.com/charliethomson/liberror", rev = "b75e9a2" }
+libcmd = { git = "https://github.com/charliethomson/libcmd", rev = "74eb895" }
+libsignal = { git = "https://github.com/charliethomson/libsignal", rev = "18e2c46" }
+libwhich = { git = "https://github.com/charliethomson/which", rev = "b6aaf66" }
 
 libffmpeg = { path = "./libffmpeg" }
 
-derive_builder = { version = "0.20.2" }
 serde = { version = "1.0.219", features = ["derive"] }
-strum = { version = "0.27.2", features = ["strum_macros", "derive"] }
 thiserror = { version = "2.0.16" }
-tokio = { version = "1.47.1", features = ["full"] }
+tokio = { version = "1.47.1", features = ["rt", "process", "sync", "time", "macros"] }
 tokio-util = { version = "0.7.16" }
 tracing = { version = "0.1.41", features = ["valuable"] }
-uuid = { version = "1.18.1", features = ["serde", "v4"] }
 valuable = { version = "0.1.1", features = ["derive"] }
