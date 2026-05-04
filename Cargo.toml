@@ -1,7 +1,7 @@
 [workspace]
 resolver='2'
 package.edition="2024"
-package.version = "0.1.6"
+package.version = "0.1.7-alpha.0"
 
 members = [ "libffmpeg" ]
 
@@ -25,7 +25,7 @@ match_same_arms = { level = "allow", priority = 1 }
 
 [workspace.dependencies]
 liberror = { git = "https://github.com/charliethomson/liberror", rev = "b75e9a2" }
-libcmd = { git = "https://github.com/charliethomson/libcmd", rev = "74eb895" }
+libcmd = { git = "https://github.com/charliethomson/libcmd", rev = "a84f673" }
 libsignal = { git = "https://github.com/charliethomson/libsignal", rev = "18e2c46" }
 libwhich = { git = "https://github.com/charliethomson/which", rev = "b6aaf66" }
 
