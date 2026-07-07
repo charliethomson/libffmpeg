@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use libcmd::{CommandExit, CommandMonitorClient, CommandMonitorServer};
+use libcmd::{CommandError, CommandExit, CommandMonitorClient, CommandMonitorServer};
 use tokio::process::Command;
 use tokio_util::sync::CancellationToken;
 use tracing::{Instrument, instrument};
@@ -98,10 +98,14 @@ where
         tracing::debug!(exit = exit.as_value(), "ffmpeg completed");
     })
     .inspect_err(|e| {
-        tracing::error!(
-            error = %e,
-            "ffmpeg execution failed"
-        );
+        // Graceful shutdown ends in a cancellation (the SIGKILL fallback after
+        // ffmpeg ignores `q`). That is the intended stall-kill path, not a
+        // failure — keep it out of the error stream.
+        if let CommandError::Cancelled = e {
+            tracing::debug!("ffmpeg execution cancelled (graceful shutdown)");
+        } else {
+            tracing::error!(error = %e, "ffmpeg execution failed");
+        }
     })
     .map_err(Into::into);
 

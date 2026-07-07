@@ -1,4 +1,4 @@
-use libcmd::{CommandExit, CommandMonitorServer};
+use libcmd::{CommandError, CommandExit, CommandMonitorServer};
 use tokio::process::Command;
 use tokio_util::sync::CancellationToken;
 use tracing::instrument;
@@ -43,10 +43,12 @@ where
         tracing::debug!(exit = exit.as_value(), "ffmpeg completed");
     })
     .inspect_err(|e| {
-        tracing::error!(
-            error = %e,
-            "ffmpeg execution failed"
-        );
+        // Cancellation kills the process on purpose — not a failure.
+        if let CommandError::Cancelled = e {
+            tracing::debug!("ffmpeg execution cancelled");
+        } else {
+            tracing::error!(error = %e, "ffmpeg execution failed");
+        }
     })
     .map_err(Into::into)
 }
