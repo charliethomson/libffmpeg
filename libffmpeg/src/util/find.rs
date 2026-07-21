@@ -2,9 +2,39 @@ use std::path::PathBuf;
 
 use libwhich::{is_valid_executable, which};
 
-fn try_env(key: &str) -> Option<PathBuf> {
+pub(crate) fn try_env(key: &str) -> Option<PathBuf> {
     let path = std::env::var_os(key).map(PathBuf::from)?;
     is_valid_executable(&path)
+}
+
+/// Validate a caller-supplied path, returning it only if it's runnable.
+pub(crate) fn is_executable(path: &std::path::Path) -> Option<PathBuf> {
+    is_valid_executable(path)
+}
+
+/// Search the process `PATH` only.
+pub(crate) fn find_on_path(name: &str) -> Option<PathBuf> {
+    which(&[name])
+        .inspect_err(|e| {
+            tracing::error!(error = %e, "libwhich failed to search PATH");
+        })
+        .ok()?
+        .next()
+}
+
+/// The login-shell fallback, gated on its opt-in flag.
+#[cfg(unix)]
+pub(crate) fn find_in_login_shell_path_if_enabled(name: &str) -> Option<PathBuf> {
+    if !login_shell_path_enabled() {
+        return None;
+    }
+    let path = find_in_login_shell_path(name)?;
+    tracing::info!(
+        binary = name,
+        path = %path.display(),
+        "resolved binary via login-shell PATH fallback"
+    );
+    Some(path)
 }
 
 /// Opt-in flag: when set (to anything other than empty / `0`), a binary that
@@ -22,39 +52,6 @@ const LOGIN_SHELL_PATH_KEY: &str = "LIBFFMPEG_USE_LOGIN_SHELL_PATH";
 
 fn login_shell_path_enabled() -> bool {
     std::env::var_os(LOGIN_SHELL_PATH_KEY).is_some_and(|v| !v.is_empty() && v != "0")
-}
-
-pub fn find_binary(name: &str, env_key: &str) -> Option<PathBuf> {
-    if let Some(path) = try_env(env_key) {
-        return Some(path);
-    }
-
-    if let Some(path) = which(&[name])
-        .inspect_err(|e| {
-            tracing::error!(
-                error = %e,
-                "libwhich failed to find ffmpeg binary"
-            );
-        })
-        .ok()?
-        .next()
-    {
-        return Some(path);
-    }
-
-    #[cfg(unix)]
-    if login_shell_path_enabled() {
-        if let Some(path) = find_in_login_shell_path(name) {
-            tracing::info!(
-                binary = name,
-                path = %path.display(),
-                "resolved binary via login-shell PATH fallback"
-            );
-            return Some(path);
-        }
-    }
-
-    None
 }
 
 /// Search the user's login-shell `PATH` for `name`. The dirs are resolved once

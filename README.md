@@ -9,7 +9,7 @@ Async Rust wrapper for ffmpeg and ffprobe, built on tokio, with tracing and grac
 - **Async-first**: built on `tokio` with `CancellationToken` for cancellation
 - **Progress parsing**: structured `Progress` type parsed from ffmpeg's `-progress pipe:1` output
 - **Tracing integration**: all functions are instrumented with `tracing` spans and `valuable` support
-- **Binary discovery**: uses `libwhich` with env var overrides (`LIBFFMPEG_FFMPEG_PATH`, `LIBFFMPEG_FFPROBE_PATH`)
+- **Binary discovery**: host-set paths, env var overrides, `$PATH`, platform install locations, and an opt-in login-shell fallback — with `tools::locate` reporting which one answered
 
 ## Installation
 
@@ -28,14 +28,53 @@ mkdir -p .cargo && curl -o .cargo/config.toml https://raw.githubusercontent.com/
 
 ## Binary Discovery
 
-Both `ffmpeg` and `ffprobe` are located automatically. For each binary, the lookup order is:
+`ffmpeg`, `ffprobe` and `ffplay` are located automatically. The lookup order is:
 
-1. Check the environment variable (`LIBFFMPEG_FFMPEG_PATH` / `LIBFFMPEG_FFPROBE_PATH`) and validate it's an executable
-2. Fall back to searching `$PATH` via `libwhich`
+1. A path set by the host application via `tools::set_tool_path`
+2. The tool's environment variable (`LIBFFMPEG_FFMPEG_PATH`, `LIBFFMPEG_FFPROBE_PATH`, `LIBFFMPEG_FFPLAY_PATH`)
+3. `$PATH`, via `libwhich`
+4. Well-known install locations for the platform (Homebrew/MacPorts on macOS; winget, Program Files and Chocolatey on Windows)
+5. The *login* shell's `$PATH` — unix only, opt-in via `LIBFFMPEG_USE_LOGIN_SHELL_PATH`
+
+Nothing is cached, so a path set at runtime — or an ffmpeg installed while the
+app is open — takes effect on the next call.
 
 ```bash
 export LIBFFMPEG_FFMPEG_PATH=/opt/homebrew/bin/ffmpeg
 export LIBFFMPEG_FFPROBE_PATH=/opt/homebrew/bin/ffprobe
+```
+
+### Configuring paths from an application
+
+Prefer `set_tool_path` over the environment variables. Setting an env var from
+inside the process means `std::env::set_var`, which is `unsafe` on edition 2024
+and unsound once any thread exists — so it can only be done at the very top of
+`main`. `set_tool_path` has neither restriction, which is what lets an app apply
+a path the user typed into a settings screen.
+
+```rust
+use libffmpeg::tools::{self, Tool};
+
+// Apply the user's configured path (None clears it and restores the search).
+tools::set_tool_path(Tool::Ffmpeg, config.ffmpeg_path.clone());
+```
+
+### Reporting status
+
+`locate` returns both the resolved path and *how* it was found, so an
+application can tell the user what it's about to run instead of letting a
+missing binary surface as a spawn failure:
+
+```rust
+use libffmpeg::tools::{self, Tool};
+
+match tools::locate(Tool::Ffmpeg) {
+    Some(found) => println!("ffmpeg: {} ({})", found.path.display(), found.source.label()),
+    None => {
+        let (command, url) = tools::install_hint();
+        println!("ffmpeg not found — install it: {}", command.unwrap_or(url));
+    }
+}
 ```
 
 ## Usage
@@ -157,6 +196,18 @@ See [`examples/transcode_with_progress.rs`](libffmpeg/examples/transcode_with_pr
 | Function | Description |
 |---|---|
 | `ffprobe(token, prepare)` | Run ffprobe with cancellation |
+
+### `tools` module
+
+| Item | Description |
+|---|---|
+| `Tool` | `Ffmpeg` / `Ffprobe` / `Ffplay`, with `binary_name()` and `env_key()` |
+| `locate(tool)` | Resolve a tool, reporting the path *and* how it was found |
+| `find(tool)` | Resolve a tool to a path |
+| `set_tool_path(tool, path)` | Override a tool's location; beats the environment, no `unsafe` |
+| `tool_path_override(tool)` | Read back the current override |
+| `platform_default_dirs()` | Well-known install locations for this platform |
+| `install_hint()` | Suggested install command + download URL for this platform |
 
 ### `util` module
 

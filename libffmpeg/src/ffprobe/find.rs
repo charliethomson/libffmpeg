@@ -1,9 +1,16 @@
 use std::path::PathBuf;
 
-use crate::util::find_binary;
+use crate::tools::{Tool, find};
 
-pub const FFPROBE_PATH_OVERRIDE_KEY: &str = "LIBFFMPEG_FFPROBE_PATH";
+/// Environment override for ffprobe's location.
+///
+/// Prefer [`crate::tools::set_tool_path`] in new code: it needs no `unsafe` and
+/// works after threads have started.
+pub const FFPROBE_PATH_OVERRIDE_KEY: &str = Tool::Ffprobe.env_key();
 
+/// Resolve the ffprobe binary. See [`crate::tools::locate`] to also learn where
+/// it was found.
+#[must_use]
 pub fn find_ffprobe() -> Option<PathBuf> {
-    find_binary("ffprobe", FFPROBE_PATH_OVERRIDE_KEY)
+    find(Tool::Ffprobe)
 }
