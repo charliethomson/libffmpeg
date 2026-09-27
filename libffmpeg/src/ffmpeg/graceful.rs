@@ -13,7 +13,7 @@ use crate::ffmpeg::{error::FfmpegError, find::find_ffmpeg};
 /// On cancellation, sends `q` to ffmpeg's stdin (its built-in quit command),
 /// giving the process up to 5 seconds to exit cleanly before falling back to
 /// SIGKILL. This allows ffmpeg to finalize the output file properly.
-#[instrument(name = "ffmpeg.run", skip_all, fields(otel.status_code = tracing::field::Empty))]
+#[instrument(name = "ffmpeg.run", level = "debug", skip_all, fields(otel.status_code = tracing::field::Empty))]
 pub async fn ffmpeg_graceful<Prepare>(
     cancellation_token: CancellationToken,
     client: &CommandMonitorClient,
