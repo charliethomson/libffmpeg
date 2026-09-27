@@ -12,7 +12,7 @@ use crate::ffmpeg::{error::FfmpegError, find::find_ffmpeg};
 /// real-time progress parsing or logging. On cancellation the process
 /// is killed immediately — use [`super::ffmpeg_graceful`] if you need
 /// stdin-based quit with a SIGKILL fallback.
-#[instrument(skip_all)]
+#[instrument(name = "ffmpeg.monitored", skip_all, fields(otel.status_code = tracing::field::Empty))]
 pub async fn ffmpeg<Prepare>(
     cancellation_token: CancellationToken,
     server: &CommandMonitorServer,
@@ -47,6 +47,7 @@ where
         if let CommandError::Cancelled = e {
             tracing::debug!("ffmpeg execution cancelled");
         } else {
+            tracing::Span::current().record("otel.status_code", "ERROR");
             tracing::error!(error = %e, "ffmpeg execution failed");
         }
     })

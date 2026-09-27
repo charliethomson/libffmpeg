@@ -134,7 +134,10 @@ mod tests {
     fn login_shell_resolves() {
         // Either $SHELL or the passwd DB must yield a shell on any real unix.
         let shell = login_shell().expect("a login shell");
-        assert!(shell.is_absolute(), "shell path should be absolute: {shell:?}");
+        assert!(
+            shell.is_absolute(),
+            "shell path should be absolute: {shell:?}"
+        );
     }
 
     #[test]
@@ -143,7 +146,10 @@ mod tests {
         // colon-list that contains at least the system bins.
         let path = login_shell_path().expect("login shell PATH");
         assert!(!path.is_empty());
-        assert!(!path.contains("__LIBFFMPEG_PATH__"), "markers must be stripped: {path}");
+        assert!(
+            !path.contains("__LIBFFMPEG_PATH__"),
+            "markers must be stripped: {path}"
+        );
         assert!(path.split(':').any(|d| d == "/bin" || d == "/usr/bin"));
     }
 

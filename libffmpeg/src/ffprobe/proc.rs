@@ -11,7 +11,7 @@ use crate::ffprobe::{error::FfprobeError, find::find_ffprobe};
 /// Locates the ffprobe binary (via `LIBFFMPEG_FFPROBE_PATH` or `$PATH`),
 /// spawns it with the arguments configured by `prepare`, and returns
 /// the captured stdout/stderr and exit code.
-#[instrument(skip(prepare, cancellation_token))]
+#[instrument(name = "ffprobe.run", skip_all, fields(otel.status_code = tracing::field::Empty))]
 pub async fn ffprobe<Prepare>(
     cancellation_token: CancellationToken,
     prepare: Prepare,
@@ -41,6 +41,7 @@ where
         tracing::debug!(exit = exit.as_value(), "ffprobe completed");
     })
     .inspect_err(|e| {
+        tracing::Span::current().record("otel.status_code", "ERROR");
         tracing::error!(
             error = %e,
             "ffprobe execution failed"

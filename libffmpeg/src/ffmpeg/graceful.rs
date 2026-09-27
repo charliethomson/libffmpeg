@@ -13,7 +13,7 @@ use crate::ffmpeg::{error::FfmpegError, find::find_ffmpeg};
 /// On cancellation, sends `q` to ffmpeg's stdin (its built-in quit command),
 /// giving the process up to 5 seconds to exit cleanly before falling back to
 /// SIGKILL. This allows ffmpeg to finalize the output file properly.
-#[instrument(skip_all)]
+#[instrument(name = "ffmpeg.run", skip_all, fields(otel.status_code = tracing::field::Empty))]
 pub async fn ffmpeg_graceful<Prepare>(
     cancellation_token: CancellationToken,
     client: &CommandMonitorClient,
@@ -23,8 +23,6 @@ pub async fn ffmpeg_graceful<Prepare>(
 where
     Prepare: FnOnce(&mut Command),
 {
-    let span = tracing::Span::current();
-
     tracing::debug!("Starting ffmpeg execution");
 
     let ffmpeg_path = find_ffmpeg().ok_or(FfmpegError::NotFound).inspect_err(
@@ -49,8 +47,11 @@ where
     //  4. Give the process a max of 5 seconds to exit (wait using `exit_token`, quit should tell the process to exit normally)
     //  5. If the process doesn't exit after 5 seconds, cancel the process' token, signals that it should send SIGKILL
     //  6. The process will be killed, as if none of this was ever here
+    //
+    // The watcher lives as long as the process, so it gets no span of its own
+    // (a process-lifetime span never finishes inside a trace window); its rare
+    // events attach to `ffmpeg.run`.
     let shutdown_handle = {
-        let span = tracing::info_span!(parent: span, "ffmpeg_graceful::shutdown_handle");
         let client = client.clone();
         let process_token = process_token.clone();
         let exit_token = exit_token.clone();
@@ -69,6 +70,7 @@ where
                 }
 
                 // Send quit
+                tracing::debug!("graceful shutdown requested, sending q to ffmpeg");
                 client.send("q").await;
 
                 // Wait for exit to be cancelled (process exited), with max of 5 seconds
@@ -83,7 +85,7 @@ where
                     }
                 }
             }
-            .instrument(span),
+            .in_current_span(),
         )
     };
 
@@ -104,6 +106,7 @@ where
         if let CommandError::Cancelled = e {
             tracing::debug!("ffmpeg execution cancelled (graceful shutdown)");
         } else {
+            tracing::Span::current().record("otel.status_code", "ERROR");
             tracing::error!(error = %e, "ffmpeg execution failed");
         }
     })

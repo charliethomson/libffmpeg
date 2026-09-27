@@ -11,7 +11,7 @@ use crate::ffmpeg::{error::FfmpegError, find::find_ffmpeg};
 /// This is the lightest-weight variant — it spawns ffmpeg, waits for it to
 /// complete, and returns the exit result. Use [`super::ffmpeg`] if you need
 /// to stream stdout/stderr, or [`super::ffmpeg_graceful`] for graceful shutdown.
-#[instrument(skip(prepare, cancellation_token))]
+#[instrument(name = "ffmpeg.slim", skip_all, fields(otel.status_code = tracing::field::Empty))]
 pub async fn ffmpeg_slim<Prepare>(
     cancellation_token: CancellationToken,
     prepare: Prepare,
@@ -40,6 +40,7 @@ where
             if let CommandError::Cancelled = e {
                 tracing::debug!("ffmpeg execution cancelled");
             } else {
+                tracing::Span::current().record("otel.status_code", "ERROR");
                 tracing::error!(error = %e, "ffmpeg execution failed");
             }
         })

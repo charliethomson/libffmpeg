@@ -34,7 +34,7 @@ pub enum DurationError {
 ///
 /// Runs ffprobe in quiet mode and parses the `format=duration` entry
 /// from the output. Returns the duration as a [`std::time::Duration`].
-#[instrument(skip(input, cancellation_token), fields(input_path = %input.as_ref().display()))]
+#[instrument(name = "ffprobe.duration", skip(input, cancellation_token), fields(input_path = %input.as_ref().display()))]
 #[allow(clippy::too_many_lines)]
 pub async fn get_duration<P: AsRef<Path>>(
     input: P,
