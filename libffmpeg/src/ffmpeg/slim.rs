@@ -21,7 +21,10 @@ where
     // Built by hand (not `#[instrument]`) so the body holds the handle:
     // `otel.status_code` is recorded on this span, which is a no-op when it's
     // filtered out, never on whatever span the caller has current.
-    let span = tracing::info_span!("ffmpeg.slim", otel.status_code = tracing::field::Empty);
+    //
+    // DEBUG: a slim run is per-item work (a poster frame, a remux) inside the
+    // caller's own unit span.
+    let span = tracing::debug_span!("ffmpeg.slim", otel.status_code = tracing::field::Empty);
     async {
         tracing::debug!("Starting ffmpeg execution");
 

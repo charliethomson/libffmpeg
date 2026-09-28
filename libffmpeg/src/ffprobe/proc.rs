@@ -1,4 +1,4 @@
-use libcmd::CommandExit;
+use libcmd::{CommandError, CommandExit};
 use tokio::process::Command;
 use tokio_util::sync::CancellationToken;
 use tracing::Instrument;
@@ -21,7 +21,10 @@ where
     // Built by hand (not `#[instrument]`) so the body holds the handle:
     // `otel.status_code` is recorded on this span, which is a no-op when it's
     // filtered out, never on whatever span the caller has current.
-    let span = tracing::info_span!("ffprobe.run", otel.status_code = tracing::field::Empty);
+    //
+    // DEBUG: a probe is per-item work (every duration, every poster frame)
+    // inside the caller's own unit span.
+    let span = tracing::debug_span!("ffprobe.run", otel.status_code = tracing::field::Empty);
     async {
         tracing::debug!("Starting ffprobe execution");
 
@@ -45,11 +48,17 @@ where
             tracing::debug!(exit = exit.as_value(), "ffprobe completed");
         })
         .inspect_err(|e| {
-            span.record("otel.status_code", "ERROR");
-            tracing::error!(
-                error = %e,
-                "ffprobe execution failed"
-            );
+            // The caller cancelled (a timeout, a shutdown): expected, not a
+            // failure (TTR-63).
+            if let CommandError::Cancelled = e {
+                tracing::debug!("ffprobe execution cancelled");
+            } else {
+                span.record("otel.status_code", "ERROR");
+                tracing::error!(
+                    error = %e,
+                    "ffprobe execution failed"
+                );
+            }
         })
         .map_err(Into::into)
     }

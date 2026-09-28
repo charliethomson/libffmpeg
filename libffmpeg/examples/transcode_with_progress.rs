@@ -44,14 +44,13 @@ async fn main() -> anyhow::Result<()> {
                 match delivery {
                     libffmpeg::libcmd::CommandMonitorMessage::Stdout { line } => {
                         if !progress.with_line(&line) {
-                            println!("{}[O] {}{}", "\x1b[32m", line, "\x1b[0m");
+                            println!("\x1b[32m[O] {line}\x1b[0m");
                             continue;
                         }
 
                         if let Some(update) = progress.finish() {
                             println!(
-                                "{}[P] {:.2}% ({} / {}); bitrate={} @ {}fps ({:.1}x realtime) {}",
-                                "\x1b[33m",
+                                "\x1b[33m[P] {:.2}% ({} / {}); bitrate={} @ {}fps ({:.1}x realtime) \x1b[0m",
                                 100f64 * update.out_time.as_secs_f64() / total,
                                 humantime::format_duration(update.out_time),
                                 humantime::format_duration(Duration::from_secs_f64(total)),
@@ -60,13 +59,12 @@ async fn main() -> anyhow::Result<()> {
                                     humansize::DECIMAL.suffix("ps")
                                 ),
                                 update.fps,
-                                update.speed,
-                                "\x1b[0m"
+                                update.speed
                             );
                         }
                     }
                     libffmpeg::libcmd::CommandMonitorMessage::Stderr { line } => {
-                        eprintln!("{}[E] {}{}", "\x1b[31m", line, "\x1b[0m")
+                        eprintln!("\x1b[31m[E] {line}\x1b[0m");
                     }
                 }
             }
@@ -90,20 +88,15 @@ async fn main() -> anyhow::Result<()> {
     exit_token.cancel();
 
     if let Err(e) = monitor_fut.await {
-        eprintln!("Failed to wait for monitor: {}", e);
+        eprintln!("Failed to wait for monitor: {e}");
     }
 
-    println!("");
+    println!();
 
-    if result
-        .exit_code
-        .as_ref()
-        .map(|exit| exit.success)
-        .unwrap_or_default()
-    {
+    if result.exit_code.as_ref().is_some_and(|exit| exit.success) {
         println!("Transcoding completed successfully");
     } else {
-        println!("Transcoding failed: {:#?}", result);
+        println!("Transcoding failed: {result:#?}");
     }
 
     Ok(())

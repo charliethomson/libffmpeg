@@ -1,8 +1,8 @@
 //! `ffmpeg.*` / `ffprobe.run` record `otel.status_code` on their own span only.
 //!
-//! When one of those spans is filtered out (`ffmpeg.run` and
-//! `ffmpeg.monitored` are DEBUG), `Span::current()` inside it is the
-//! *caller's* span; recording through it would mark the caller ERROR.
+//! When one of those spans is filtered out (they are all DEBUG), the
+//! `Span::current()` inside it is the *caller's* span; recording through it
+//! would mark the caller ERROR.
 //!
 //! One test fn: it points the tools at a broken binary through the
 //! process-global override, and this file is its own test binary.
