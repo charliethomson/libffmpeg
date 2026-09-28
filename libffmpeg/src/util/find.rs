@@ -107,10 +107,10 @@ fn login_shell_path() -> Option<String> {
 /// it from the passwd database — the OS's own record of the account's shell.
 #[cfg(unix)]
 fn login_shell() -> Option<PathBuf> {
-    if let Some(shell) = std::env::var_os("SHELL") {
-        if !shell.is_empty() {
-            return Some(PathBuf::from(shell));
-        }
+    if let Some(shell) = std::env::var_os("SHELL")
+        && !shell.is_empty()
+    {
+        return Some(PathBuf::from(shell));
     }
 
     // SAFETY: `getpwuid` returns a pointer into static storage owned by libc.

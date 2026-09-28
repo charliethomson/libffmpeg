@@ -126,7 +126,7 @@ pub fn tool_path_override(tool: Tool) -> Option<PathBuf> {
     OVERRIDES
         .read()
         .unwrap_or_else(std::sync::PoisonError::into_inner)[tool.index()]
-        .clone()
+    .clone()
 }
 
 /// Resolve a tool, reporting where it was found.
@@ -138,20 +138,35 @@ pub fn tool_path_override(tool: Tool) -> Option<PathBuf> {
 #[must_use]
 pub fn locate(tool: Tool) -> Option<Located> {
     if let Some(path) = tool_path_override(tool).and_then(|p| is_executable(&p)) {
-        return Some(Located { path, source: ToolSource::Configured });
+        return Some(Located {
+            path,
+            source: ToolSource::Configured,
+        });
     }
     if let Some(path) = try_env(tool.env_key()) {
-        return Some(Located { path, source: ToolSource::Environment });
+        return Some(Located {
+            path,
+            source: ToolSource::Environment,
+        });
     }
     if let Some(path) = find_on_path(tool.binary_name()) {
-        return Some(Located { path, source: ToolSource::Path });
+        return Some(Located {
+            path,
+            source: ToolSource::Path,
+        });
     }
     if let Some(path) = find_in_platform_defaults(tool.binary_name()) {
-        return Some(Located { path, source: ToolSource::PlatformDefault });
+        return Some(Located {
+            path,
+            source: ToolSource::PlatformDefault,
+        });
     }
     #[cfg(unix)]
     if let Some(path) = crate::util::find::find_in_login_shell_path_if_enabled(tool.binary_name()) {
-        return Some(Located { path, source: ToolSource::LoginShell });
+        return Some(Located {
+            path,
+            source: ToolSource::LoginShell,
+        });
     }
     None
 }
@@ -186,7 +201,12 @@ pub fn platform_default_dirs() -> Vec<PathBuf> {
         let mut dirs = Vec::new();
         // winget shims, then the two common manual/choco install roots.
         if let Some(local) = std::env::var_os("LOCALAPPDATA") {
-            dirs.push(std::path::Path::new(&local).join("Microsoft").join("WinGet").join("Links"));
+            dirs.push(
+                std::path::Path::new(&local)
+                    .join("Microsoft")
+                    .join("WinGet")
+                    .join("Links"),
+            );
         }
         for root in ["ProgramFiles", "ProgramFiles(x86)"] {
             if let Some(p) = std::env::var_os(root) {
@@ -197,7 +217,11 @@ pub fn platform_default_dirs() -> Vec<PathBuf> {
             dirs.push(std::path::Path::new(&drive).join("\\ffmpeg\\bin"));
         }
         if let Some(programdata) = std::env::var_os("ProgramData") {
-            dirs.push(std::path::Path::new(&programdata).join("chocolatey").join("bin"));
+            dirs.push(
+                std::path::Path::new(&programdata)
+                    .join("chocolatey")
+                    .join("bin"),
+            );
         }
         dirs
     }
@@ -224,7 +248,10 @@ fn find_in_platform_defaults(name: &str) -> Option<PathBuf> {
 pub fn install_hint() -> (Option<&'static str>, &'static str) {
     #[cfg(target_os = "macos")]
     {
-        (Some("brew install ffmpeg"), "https://ffmpeg.org/download.html#build-mac")
+        (
+            Some("brew install ffmpeg"),
+            "https://ffmpeg.org/download.html#build-mac",
+        )
     }
     #[cfg(target_os = "windows")]
     {
@@ -248,7 +275,10 @@ mod tests {
     #[test]
     fn override_roundtrips_per_tool() {
         set_tool_path(Tool::Ffprobe, Some(PathBuf::from("/tmp/ffprobe")));
-        assert_eq!(tool_path_override(Tool::Ffprobe), Some(PathBuf::from("/tmp/ffprobe")));
+        assert_eq!(
+            tool_path_override(Tool::Ffprobe),
+            Some(PathBuf::from("/tmp/ffprobe"))
+        );
         // Independent slots: setting one must not disturb another.
         assert_eq!(tool_path_override(Tool::Ffplay), None);
         set_tool_path(Tool::Ffprobe, None);
