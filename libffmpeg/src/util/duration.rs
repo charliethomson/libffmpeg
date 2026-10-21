@@ -13,19 +13,30 @@ use crate::ffprobe::{FfprobeError, ffprobe};
 
 /// Errors that can occur when extracting a media file's duration via ffprobe.
 #[derive(Error, Debug, Clone, Serialize, Deserialize, Valuable)]
+#[serde(
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase",
+    tag = "$type",
+    content = "context"
+)]
 pub enum DurationError {
+    #[serde(rename = "dev.thmsn.ffmpeg.duration.error.ffprobe")]
     #[error(transparent)]
     Ffprobe {
         #[from]
         inner_error: FfprobeError,
     },
 
+    #[serde(rename = "dev.thmsn.ffmpeg.duration.error.incomplete_subprocess")]
     #[error("Process returned, but no exit status was present: stdout_lines={}, stderr_lines={}", result.stdout_lines.len(), result.stderr_lines.len())]
     IncompleteSubprocess { result: CommandExit },
+    #[serde(rename = "dev.thmsn.ffmpeg.duration.error.exited_unsuccessfully")]
     #[error("ffprobe exited unsuccessfully with code {}: {:?}", exit_code.code.map_or_else(|| "unknown".to_string(), |c| c.to_string()), exit_code)]
     ExitedUnsuccessfully { exit_code: CommandExitCode },
-    #[error("Expected ffprobe to output a line with the duration, got {} stdout lines and {} stderr lines: {}", result.stdout_lines.len(), result.stderr_lines.len(), result.stdout_lines.join("\n"))]
+    #[serde(rename = "dev.thmsn.ffmpeg.duration.error.expected_line")]
+    #[error("Expected ffprobe to output a line with the duration, got {} stdout lines and {} stderr lines", result.stdout_lines.len(), result.stderr_lines.len())]
     ExpectedLine { result: CommandExit },
+    #[serde(rename = "dev.thmsn.ffmpeg.duration.error.parse")]
     #[error("Failed to parse duration provided by ffprobe: {inner_error}")]
     Parse { inner_error: AnyError },
 }
@@ -42,7 +53,7 @@ pub async fn get_duration<P: AsRef<Path>>(
     input: P,
     cancellation_token: CancellationToken,
 ) -> Result<Duration, DurationError> {
-    tracing::info!(
+    tracing::debug!(
         input_path = %input.as_ref().display(),
         "Executing ffprobe to get duration"
     );
@@ -57,29 +68,14 @@ pub async fn get_duration<P: AsRef<Path>>(
     .await?;
 
     let Some(exit_code) = result.exit_code.take() else {
-        tracing::error!(
-            stdout_lines = result.stdout_lines.len(),
-            stderr_lines = result.stderr_lines.len(),
-            "Process returned but no exit status was present"
-        );
         return Err(DurationError::IncompleteSubprocess { result });
     };
 
     if !exit_code.success {
-        tracing::error!(
-            exit_code = ?exit_code,
-            stderr_lines = ?result.stderr_lines,
-            "ffprobe exited unsuccessfully"
-        );
         return Err(DurationError::ExitedUnsuccessfully { exit_code });
     }
 
     let Some(duration_line) = result.stdout_lines.first() else {
-        tracing::error!(
-            stdout_lines = ?result.stdout_lines,
-            stderr_lines = ?result.stderr_lines,
-            "Expected ffprobe to output a line with the duration"
-        );
         return Err(DurationError::ExpectedLine { result });
     };
 
@@ -90,15 +86,8 @@ pub async fn get_duration<P: AsRef<Path>>(
 
     let duration_seconds = duration_line
         .parse::<f64>()
-        .map_err(|e| {
-            tracing::error!(
-                duration_line = %duration_line,
-                error = %e,
-                "Failed to parse duration from ffprobe output"
-            );
-            DurationError::Parse {
-                inner_error: e.into(),
-            }
+        .map_err(|e| DurationError::Parse {
+            inner_error: e.into(),
         })
         .inspect(|seconds| {
             tracing::trace!(
@@ -109,7 +98,7 @@ pub async fn get_duration<P: AsRef<Path>>(
 
     let duration = Duration::from_secs_f64(duration_seconds);
 
-    tracing::info!(
+    tracing::debug!(
         duration_seconds = %duration_seconds,
         "Successfully extracted duration"
     );

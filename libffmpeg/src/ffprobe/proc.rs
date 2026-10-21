@@ -28,11 +28,9 @@ where
     async {
         tracing::debug!("Starting ffprobe execution");
 
-        let ffprobe_path = find_ffprobe().ok_or(FfprobeError::NotFound).inspect_err(
-            |e| tracing::error!(error =% e, error_context =? e, "ffprobe binary not found"),
-        )?;
+        let ffprobe_path = find_ffprobe().ok_or(FfprobeError::NotFound)?;
 
-        tracing::info!(
+        tracing::debug!(
             ffprobe_path = %ffprobe_path.display(),
             "Executing ffprobe"
         );
@@ -54,10 +52,6 @@ where
                 tracing::debug!("ffprobe execution cancelled");
             } else {
                 span.record("otel.status_code", "ERROR");
-                tracing::error!(
-                    error = %e,
-                    "ffprobe execution failed"
-                );
             }
         })
         .map_err(Into::into)

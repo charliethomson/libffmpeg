@@ -16,7 +16,7 @@ pub(crate) fn is_executable(path: &std::path::Path) -> Option<PathBuf> {
 pub(crate) fn find_on_path(name: &str) -> Option<PathBuf> {
     which(&[name])
         .inspect_err(|e| {
-            tracing::error!(error = %e, "libwhich failed to search PATH");
+            tracing::warn!(error = %e, "libwhich failed to search PATH");
         })
         .ok()?
         .next()
@@ -29,7 +29,7 @@ pub(crate) fn find_in_login_shell_path_if_enabled(name: &str) -> Option<PathBuf>
         return None;
     }
     let path = find_in_login_shell_path(name)?;
-    tracing::info!(
+    tracing::debug!(
         binary = name,
         path = %path.display(),
         "resolved binary via login-shell PATH fallback"
@@ -145,7 +145,7 @@ mod tests {
         // Marker extraction must survive any profile banner/noise and yield a
         // colon-list that contains at least the system bins.
         let path = login_shell_path().expect("login shell PATH");
-        assert!(!path.is_empty());
+        assert_ne!(path, "");
         assert!(
             !path.contains("__LIBFFMPEG_PATH__"),
             "markers must be stripped: {path}"

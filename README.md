@@ -26,6 +26,21 @@ Copy `.cargo/config.toml` into your workspace to enable `tracing`'s unstable `va
 mkdir -p .cargo && curl -o .cargo/config.toml https://raw.githubusercontent.com/charliethomson/libffmpeg/refs/heads/main/.cargo/config.toml
 ```
 
+There are no cargo features; everything is always compiled in. The ffmpeg suite itself is
+not bundled, the consuming app installs it or points libffmpeg at it (see below).
+
+## Layout
+
+| Path | Role |
+|---|---|
+| `libffmpeg/src/ffmpeg/` | the three ffmpeg runners and the `-progress` parser |
+| `libffmpeg/src/ffprobe/` | the ffprobe runner |
+| `libffmpeg/src/tools.rs` | binary discovery and the host override |
+| `libffmpeg/src/util/` | `get_duration` and the PATH / login-shell search helpers |
+| `libffmpeg/examples/` | runnable usage, also the integration check for the runners |
+| `libffmpeg/tests/` | span and cancellation tests that need their own process |
+| `scripts/cov.sh` | tarpaulin coverage report into `.cov/` |
+
 ## Binary Discovery
 
 `ffmpeg`, `ffprobe` and `ffplay` are located automatically. The lookup order is:
@@ -231,6 +246,17 @@ This crate uses several companion libraries:
 - [`libwhich`](https://github.com/charliethomson/which) — binary discovery
 - [`liberror`](https://github.com/charliethomson/liberror) — error utilities
 - [`libsignal`](https://github.com/charliethomson/libsignal) — signal handling (used in examples)
+
+## Development
+
+There's no CI, so this is the gate. The tests fake the binaries, so no ffmpeg install is
+needed; the process and shell tests only run on unix.
+
+```bash
+cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test
+```
+
+Coverage: `scripts/cov.sh` (needs `cargo-tarpaulin`). Nothing is generated.
 
 ## License
 

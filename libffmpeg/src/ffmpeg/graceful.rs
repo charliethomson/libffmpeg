@@ -29,11 +29,9 @@ where
     async {
         tracing::debug!("Starting ffmpeg execution");
 
-        let ffmpeg_path = find_ffmpeg().ok_or(FfmpegError::NotFound).inspect_err(
-            |e| tracing::error!(error =% e, error_context =? e, "ffmpeg binary not found"),
-        )?;
+        let ffmpeg_path = find_ffmpeg().ok_or(FfmpegError::NotFound)?;
 
-        tracing::info!(
+        tracing::debug!(
             ffmpeg_path = %ffmpeg_path.display(),
             "Executing ffmpeg"
         );
@@ -111,7 +109,6 @@ where
                 tracing::debug!("ffmpeg execution cancelled (graceful shutdown)");
             } else {
                 span.record("otel.status_code", "ERROR");
-                tracing::error!(error = %e, "ffmpeg execution failed");
             }
         })
         .map_err(Into::into);
